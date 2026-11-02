@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.fridgy"
-        minSdk = 26
+        minSdk = 29
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
@@ -51,4 +51,12 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
-}
+// HTTP-запити до backend
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+
+// ViewModel для керування станами інтерфейсу
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
+
+// Kotlin Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")}
