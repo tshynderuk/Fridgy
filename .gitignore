@@ -21,3 +21,18 @@ local.properties
 .env.*
 *.jks
 *.keystore
+# Python backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Backend environment
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Temporary backup files
+backend/main_old.py
+backend/main_before_async_fix.py
+backend/.gitignore.txt
