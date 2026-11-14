@@ -1,10 +1,12 @@
-
 package com.example.fridgy.ui
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.fridgy.data.HistoryRepository
 import com.example.fridgy.data.RecipeRepository
 import com.example.fridgy.data.RecipeResponse
+import com.example.fridgy.data.local.AppDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,9 +29,13 @@ sealed interface RecipeUiState {
     ) : RecipeUiState
 }
 
-class RecipeViewModel : ViewModel() {
+class RecipeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = RecipeRepository()
+
+    private val historyRepository = HistoryRepository(
+        AppDatabase.getInstance(application).historyDao()
+    )
 
     private val _uiState =
         MutableStateFlow<RecipeUiState>(RecipeUiState.Idle)
@@ -98,13 +104,25 @@ class RecipeViewModel : ViewModel() {
                     )
                 }
 
+                // Результат валідний. Це єдина точка збереження в історію.
+                // Помилка збереження не повинна ховати рецепти від користувача.
+                try {
+                    historyRepository.saveSuccessful(
+                        ingredients = ingredients,
+                        maxTimeMinutes = maxTime,
+                        recipes = recipes
+                    )
+                } catch (e: Exception) {
+                    // Історія недоступна, але основний сценарій продовжується
+                }
+
                 _uiState.value = RecipeUiState.Success(
                     recipes = recipes
                 )
 
             } catch (e: HttpException) {
 
-                // Обробка HTTP-помилок
+                // Обробка HTTP-помилок (у базу нічого не зберігається)
 
                 val message = when (e.code()) {
 
