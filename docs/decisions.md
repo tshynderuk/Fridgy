@@ -25,6 +25,7 @@ Selected technologies:
 - ViewModel
 - Kotlin Coroutines
 - StateFlow
+- Room (local history, see section 13)
 
 Constraint:
 Do not replace the existing Android stack with Flutter,
@@ -79,6 +80,11 @@ AI integration is implemented on the backend.
 
 Constraint:
 The Gemini API key must remain on the server.
+
+Note:
+An experiment with calling Gemini directly from the
+Android app (Firebase AI Logic) was kept in a separate
+Git branch and is not part of the main architecture.
 
 ## 6. API Communication
 
@@ -135,6 +141,12 @@ Constraint:
 Never commit real API keys.
 Never expose secrets in Android source code.
 Never include API keys in logs or API responses.
+Never write secrets or technical error messages
+to the local history.
+
+Note:
+app/google-services.json (left over from the Firebase experiment)
+must not be committed.
 
 ## 9. Error Handling
 
@@ -181,11 +193,103 @@ When implementing new features:
 
 The following features may require new decisions:
 
-- Multiple recipe suggestions.
-- Recipe history.
+- Offline requests with "pending" status.
 - Favorite recipes.
 - Dietary preferences.
 - Camera-based ingredient recognition.
 
 These features are not part of the confirmed
 current implementation.
+
+## 13. Local Storage Technology (Lab 4, 2026-11-14)
+
+Decision:
+Use Room (SQLite) for the local history.
+
+Alternatives considered:
+- DataStore: suited for settings and flags, not for a list of records.
+- Plain files: no queries, sorting or reactive updates.
+- In-memory list: data is lost when the application process ends.
+
+Reason:
+The history is a list of structured records that must be sorted,
+read individually, deleted and observed reactively (Flow).
+Room is recommended for this by the Android documentation.
+
+New dependencies (justification):
+- androidx.room:room-runtime and room-ktx (version 2.8.4).
+- androidx.room:room-compiler through KSP, because the code is in Kotlin.
+Existing libraries cannot provide a persistent database.
+
+Constraint:
+Screens must not access the database directly.
+The chain is DAO -> Repository -> ViewModel -> Screen.
+
+## 14. History Record Structure (Lab 4)
+
+Decision:
+One successful request = one row in table history_entries.
+The three recipes are stored together in one text column
+(recipesJson) as JSON produced by Gson.
+
+Fields:
+id (auto-generated), createdAt, inputSummary, maxTimeMinutes,
+resultSummary, recipesJson, status.
+
+Reason:
+The three recipes always belong to one request and are shown together,
+so a single table keeps the model simple. The list screen needs only
+the summary columns; the details screen parses recipesJson.
+
+Principle:
+Store facts (input, result, time). Compute derived values
+(date format, labels such as "Variant 1 of 3") when displaying.
+
+Constraint:
+Never use OnConflictStrategy.REPLACE for history.
+The history is a log of facts: each run adds a new row.
+The list is ordered by createdAt DESC.
+
+## 15. Single Save Point (Lab 4)
+
+Decision:
+The result is saved in one place only: in RecipeViewModel,
+immediately after the response is validated
+(exactly three recipes received) and before the state becomes Success.
+
+Reason:
+Error branches (HTTP errors, network errors, invalid response)
+must never create a "ready" record.
+
+Decision:
+A failure to save must not hide the recipes from the user.
+The save is wrapped in its own try/catch.
+
+## 16. Screen Navigation (Lab 4)
+
+Decision:
+Switch between the main, history and details screens
+with a simple state variable in FridgyApp
+instead of adding the Navigation library.
+
+Reason:
+Three screens do not justify a new dependency.
+
+## 17. Database Schema Version (Lab 4)
+
+Decision:
+AppDatabase has version 1 and exportSchema = false.
+No migrations exist yet and no destructive fallback is configured.
+
+Constraint:
+Any future schema change requires either a Room Migration
+or an explicit decision to use a destructive fallback,
+documented in known-limitations.md.
+
+## 18. Data That Is Not Stored (Lab 4)
+
+- API keys, tokens and other secrets.
+- Backend errors and technical error messages.
+- Incomplete or invalid AI responses.
+- Requests that did not produce a result.
+- Derived values (formatted dates, labels).

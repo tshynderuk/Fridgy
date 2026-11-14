@@ -43,18 +43,18 @@ Requirements:
 
 Status: IMPLEMENTED
 
-The application must generate a recipe using
+The application must generate recipes using
 the ingredients provided by the user.
 
-The generated recipe must contain:
+Each generated recipe must contain:
 - Recipe name.
 - Cooking time.
 - Ingredients with approximate quantities.
 - Cooking instructions.
 - AI source.
 
-The current implementation generates one recipe
-per API request.
+One API request returns exactly three recipes
+(see FR-09).
 
 ### FR-04: Cooking Time Validation
 
@@ -77,9 +77,9 @@ not measurement of actual cooking duration.
 Status: IMPLEMENTED
 
 The Android application must display
-the received recipe.
+the received recipes.
 
-The result contains:
+Each recipe contains:
 - Recipe name.
 - Cooking time.
 - Ingredient list.
@@ -129,9 +129,9 @@ error messages.
 
 ### FR-09: Multiple Recipe Suggestions
 
-Status: PLANNED
+Status: IMPLEMENTED
 
-The application should generate
+The application generates
 three different recipe suggestions
 from the same ingredient list.
 
@@ -141,7 +141,59 @@ Each suggestion must:
 - Include cooking instructions.
 - Respect the maximum cooking time.
 
-This feature is not implemented yet.
+### FR-10: Local History Storage
+
+Status: IMPLEMENTED
+
+The application must store every successfully
+received and validated result locally.
+
+Requirements:
+- A record contains a local identifier, the date and time,
+  a short summary of the input, the result and the status.
+- The result is saved only after the response is validated
+  (exactly three recipes received).
+- Backend errors, network errors and incomplete responses
+  must not create a record.
+- Each new request creates a new record.
+  Existing records are never overwritten.
+- Records remain available after the application
+  is fully closed and started again.
+
+### FR-11: History List
+
+Status: IMPLEMENTED
+
+The application must show the saved records
+in reverse chronological order (newest first).
+
+Requirements:
+- A loading state is shown while the list is being read.
+- An empty history shows an understandable message.
+- Each item shows the date, the ingredients,
+  the time limit and the names of the dishes.
+
+### FR-12: History Details
+
+Status: IMPLEMENTED
+
+The user must be able to open a saved record
+and see its input and its three recipes.
+
+Requirements:
+- The screen clearly marks the result as saved
+  (with the date), not as a new AI run.
+
+### FR-13: History Deletion
+
+Status: IMPLEMENTED
+
+The user must be able to delete a single record
+or clear the whole history.
+
+Requirements:
+- Both actions require confirmation.
+- A deleted record does not return after restart.
 
 ## 3. Non-Functional Requirements
 
@@ -161,18 +213,27 @@ when the backend is unavailable.
 
 Errors must be handled gracefully.
 
+A failure to write to the local history
+must not hide recipes from the user.
+
 ### NFR-03: Security
 
 - Gemini API key must remain on backend.
 - Secrets must not be stored in Android source code.
 - Environment variables are used for backend configuration.
 - Sensitive information must not be committed to Git.
+- API keys, tokens and technical error messages
+  are never written to the local history.
 
 ### NFR-04: Maintainability
 
 The application uses separate components
 for UI state management, data access
 and network communication.
+
+The local storage follows the chain
+DAO -> Repository -> ViewModel -> Screen.
+Screens do not access the database directly.
 
 Backend and Android responsibilities
 must remain separated.
@@ -182,6 +243,12 @@ must remain separated.
 The Android application is tested
 using Pixel 7 API 35 emulator
 with Android 15.
+
+### NFR-06: Data Privacy
+
+The history is stored only on the user's device.
+The user can delete a single record
+or the whole history from the application.
 
 ## 4. Current Implementation Status
 
@@ -196,8 +263,11 @@ with Android 15.
 | Recipe presentation | Implemented |
 | Loading and error states | Implemented |
 | Backend connection | Implemented |
-| Multiple recipes | Planned |
-| Recipe history | Not implemented |
+| Multiple recipes | Implemented |
+| Local recipe history (Room) | Implemented |
+| History list and details | Implemented |
+| History deletion with confirmation | Implemented |
+| Offline requests with "pending" status | Not implemented |
 | Favorite recipes | Not implemented |
 | Camera recognition | Not implemented |
 | User authentication | Not implemented |
@@ -211,21 +281,26 @@ when the following conditions are satisfied:
 2. User can specify cooking time.
 3. Invalid input is rejected.
 4. Backend receives a valid JSON request.
-5. Gemini generates a structured recipe.
+5. Gemini generates three structured recipes.
 6. Backend validates the AI response.
 7. Cooking time does not exceed the requested limit.
-8. Android displays the generated recipe.
+8. Android displays the generated recipes.
 9. Application handles server errors.
-10. Existing functionality remains operational
+10. A successful result appears in the history.
+11. Two different requests produce two records, the newer one on top.
+12. Saved records remain after a full restart of the application.
+13. A backend error does not create a history record.
+14. A deleted record does not return after restart.
+15. Existing functionality remains operational
     after future modifications.
 
 ## 6. Future Development
 
 Planned improvements:
 
-- Three alternative recipe suggestions.
+- Offline requests with "pending" status (advanced level of Lab 4).
 - Improved cooking time accuracy.
-- Recipe history.
 - Favorite recipes.
 - Dietary preferences.
 - More advanced recipe presentation.
+- Undo for deletion and filtering history by date.

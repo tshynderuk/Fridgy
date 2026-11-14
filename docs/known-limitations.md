@@ -5,15 +5,16 @@
 
 Fridgy is currently an MVP (Minimum Viable Product).
 
-The application supports basic recipe generation using products entered by the user and a maximum cooking time.
+The application supports recipe generation using products entered by the user and a maximum cooking time, and keeps a local history of successful results.
 
 The current implementation does not include all planned features.
 
 ## 2. AI Limitations
 
-- One API request generates only one recipe.
+- One API request generates three recipes.
 - AI-generated recipes may vary in quality.
-- Recipe generation depends on Google Gemini availability.
+- Recipe generation depends on Google Gemini availability and daily quota.
+- Gemini may return 429 (quota) or 503 (high demand); these errors are temporary.
 - AI response time may vary.
 - The model may occasionally return an invalid response.
 - Recipe recommendations are generated dynamically and are not retrieved from a verified recipe database.
@@ -46,7 +47,7 @@ However, backend does not independently verify that every ingredient in the gene
 
 ## 5. Response Limitations
 
-The current RecipeResponse contains:
+The current RecipeResponse (one recipe) contains:
 
 - recipe_name
 - cooking_time_minutes
@@ -54,8 +55,9 @@ The current RecipeResponse contains:
 - instructions
 - source
 
+POST /recipe returns a list of exactly three RecipeResponse objects.
+
 There is no confirmed support for:
-- Multiple alternative recipes.
 - Nutritional information.
 - Calorie calculation.
 - Dietary classification.
@@ -75,24 +77,44 @@ There is no confirmed support for:
 
 The reviewed Android implementation includes:
 
-- One recipe result state.
-- Loading state.
-- Success state.
-- Error state.
+- Loading, success and error states.
 - Manual ingredient input.
 - Manual cooking time input.
+- Display of three recipe cards.
+- Local history, history details and deletion (see section 8).
 
-The current RecipeUiState.Success stores one RecipeResponse.
+RecipeUiState.Success stores a list of recipes (List<RecipeResponse>).
 
-Multiple recipe cards are not supported by the current response model.
+Screen switching (main / history / details) is implemented with a simple state variable, not with the Navigation library.
 
-## 8. Features Not Confirmed in the Reviewed Code
+## 8. Local History Limitations (Lab 4)
+
+Stored per record: local id, date and time, a short summary of the input (up to 150 characters), the time limit, the names of the dishes, the full result as JSON, the status.
+
+Deliberately not stored:
+- API keys, tokens and other secrets.
+- Backend errors and technical error messages.
+- Incomplete or invalid AI responses.
+- Requests that did not produce a result.
+
+Limitations:
+- The history exists only on the device. There is no synchronization between devices.
+- Uninstalling the application removes the history.
+- The full result is stored as JSON produced by Gson from RecipeResponse. Renaming or removing fields in RecipeResponse may make old records unreadable. In that case the details screen shows a "record not found or cannot be read" message.
+- If saving to the local database fails, the error is not shown to the user: the recipes are still displayed, but no history record is created.
+- The database schema has version 1 and no migrations. A future schema change requires a Room Migration or an explicitly documented destructive fallback. The schema is not exported (exportSchema = false).
+- The AndroidManifest has allowBackup="true" with the default backup rules, so the application data may be included in Android automatic backup depending on device settings. This has not been configured or tested.
+- There is no undo for deletion, no filtering by date and no pagination of the list.
+- Requests made without network are not saved for later sending (the advanced level of Lab 4, status "pending", is not implemented).
+- The saved results are historical. Open recipes are not re-validated and are not updated when the backend changes.
+- Automated tests for the local storage are not implemented; verification was done manually on the emulator.
+
+## 9. Features Not Confirmed in the Reviewed Code
 
 The following features have not been confirmed in the reviewed implementation:
 
 - User authentication.
 - Cloud database.
-- Recipe history.
 - Favorite recipes.
 - User profiles.
 - Camera-based ingredient recognition.
@@ -102,7 +124,7 @@ The following features have not been confirmed in the reviewed implementation:
 
 These features must not be assumed to exist.
 
-## 9. Development Constraints
+## 10. Development Constraints
 
 When modifying Fridgy:
 
@@ -113,16 +135,18 @@ When modifying Fridgy:
 5. Preserve existing loading, success and error states.
 6. Validate AI responses on the backend.
 7. Check cooking time against the user's maximum.
-8. Avoid unnecessary changes to unrelated files.
+8. Save to the local history only after a validated successful result.
+9. Do not use OnConflictStrategy.REPLACE for history records; every run adds a new row.
+10. Avoid unnecessary changes to unrelated files.
 
-## 10. Future Improvements
+## 11. Future Improvements
 
 Potential improvements:
 
-- Generate three alternative recipes.
 - Improve cooking time accuracy.
 - Add recipe favorites.
-- Add recipe history.
 - Introduce dietary preferences.
 - Improve recipe presentation.
-- Add automated tests.
+- Add automated tests (including: backend error -> 0 records in the database).
+- Add undo for deletion and filtering history by date.
+- Add offline requests with "pending" status.
