@@ -4,6 +4,7 @@ package com.example.fridgy
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +48,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fridgy.data.RecipeResponse
 import com.example.fridgy.ui.RecipeUiState
 import com.example.fridgy.ui.RecipeViewModel
+import com.example.fridgy.ui.HistoryViewModel
 
 private val DarkGreen = Color(0xFF206748)
 private val Background = Color(0xFFF7F6EE)
@@ -61,7 +63,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                FridgyStartScreen()
+                FridgyApp()
             }
         }
     }
@@ -69,7 +71,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun FridgyStartScreen(
-    viewModel: RecipeViewModel = viewModel()
+    viewModel: RecipeViewModel = viewModel(),
+    onOpenHistory: () -> Unit = {}
 ) {
 
     var ingredientsText by rememberSaveable {
@@ -129,6 +132,12 @@ fun FridgyStartScreen(
                 fontSize = 14.sp,
                 color = SecondaryText
             )
+            TextButton(onClick = onOpenHistory) {
+                Text(
+                    text = "📖 Історія рецептів",
+                    color = DarkGreen
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -548,5 +557,43 @@ private fun IngredientChip(name: String) {
             fontSize = 13.sp,
             color = DarkGreen
         )
+    }
+}
+@Composable
+fun FridgyApp(
+    historyViewModel: HistoryViewModel = viewModel()
+) {
+    var screen by rememberSaveable { mutableStateOf("home") }
+    var selectedId by rememberSaveable { mutableStateOf(0L) }
+
+    when (screen) {
+        "history" -> {
+            BackHandler { screen = "home" }
+
+            HistoryScreen(
+                viewModel = historyViewModel,
+                onBack = { screen = "home" },
+                onOpen = { id ->
+                    selectedId = id
+                    screen = "details"
+                }
+            )
+        }
+
+        "details" -> {
+            BackHandler { screen = "history" }
+
+            DetailsScreen(
+                viewModel = historyViewModel,
+                id = selectedId,
+                onBack = { screen = "history" }
+            )
+        }
+
+        else -> {
+            FridgyStartScreen(
+                onOpenHistory = { screen = "history" }
+            )
+        }
     }
 }
