@@ -12,9 +12,13 @@ class RecipeQuery:
 
 @dataclass(frozen=True)
 class Recipe:
-    """Один рецепт у доменному вигляді."""
+    """Один рецепт у доменному вигляді.
+
+    source — хто створив рецепт: "gemini" (справжній AI) або "mock" (підробка).
+    """
 
     name: str
     cooking_time_minutes: int
     ingredients: list[str]
     instructions: list[str]
+    source: str = "unknown"
