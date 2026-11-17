@@ -109,7 +109,29 @@ Limitations:
 - The saved results are historical. Open recipes are not re-validated and are not updated when the backend changes.
 - Automated tests for the local storage are not implemented; verification was done manually on the emulator.
 
-## 9. Features Not Confirmed in the Reviewed Code
+## 9. Backend Architecture Limitations (Lab 5)
+
+- Gemini errors are classified by searching substrings in the SDK error text
+  ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"). The code is isolated in
+  GeminiProvider, but it may stop working if the SDK changes its messages.
+- Only one real provider exists. There is no fallback provider if Gemini fails.
+- MockProvider returns static test data. Its recipes are not real.
+- GeminiProvider is tested with a fake client. The real Gemini call was
+  verified manually, not by an automated test.
+- Dependencies are created manually (no DI framework). The provider is stored in
+  one module-level variable and created on the first request.
+- Settings are cached. After editing backend/.env the server must be restarted.
+- AI_PROVIDER accepts "gemini" or "mock". Any other value gives HTTP 503.
+- The X-Request-ID header is added by middleware. A response produced by the
+  outermost server error handler may not contain it. The identifier is not part
+  of the JSON body and is not used by the Android application.
+- The Android application is unchanged: it shows source = "mock" as
+  "Source: mock".
+- API tests use TestClient without running the lifespan (startup and shutdown).
+- The test run shows two DeprecationWarning messages from the google-genai
+  library.
+
+## 10. Features Not Confirmed in the Reviewed Code
 
 The following features have not been confirmed in the reviewed implementation:
 
@@ -124,7 +146,7 @@ The following features have not been confirmed in the reviewed implementation:
 
 These features must not be assumed to exist.
 
-## 10. Development Constraints
+## 11. Development Constraints
 
 When modifying Fridgy:
 
@@ -137,9 +159,12 @@ When modifying Fridgy:
 7. Check cooking time against the user's maximum.
 8. Save to the local history only after a validated successful result.
 9. Do not use OnConflictStrategy.REPLACE for history records; every run adds a new row.
-10. Avoid unnecessary changes to unrelated files.
+10. Keep AI SDK types inside fridgy/infrastructure; use the RecipeProvider interface elsewhere.
+11. Create dependencies only in the composition root (api/dependencies.py).
+12. Write tests without network and API keys (MockProvider, fake client).
+13. Avoid unnecessary changes to unrelated files.
 
-## 11. Future Improvements
+## 12. Future Improvements
 
 Potential improvements:
 
@@ -150,3 +175,6 @@ Potential improvements:
 - Add automated tests (including: backend error -> 0 records in the database).
 - Add undo for deletion and filtering history by date.
 - Add offline requests with "pending" status.
+- Add a fallback provider for controlled answers when Gemini fails.
+- Replace substring matching of SDK errors with typed exceptions if the SDK allows it.
+- Add a health check of the external dependency.

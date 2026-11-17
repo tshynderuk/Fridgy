@@ -30,6 +30,7 @@ Fridgy — нативний Android-застосунок для генераці
 - Google GenAI SDK.
 - Uvicorn.
 - Python-dotenv.
+- pytest та httpx (автоматизовані тести, ЛР5).
 
 ### AI
 - Google Gemini API.
@@ -87,16 +88,67 @@ Fridgy — нативний Android-застосунок для генераці
 
 ## 4. Backend Architecture
 
-Backend реалізований на Python з використанням FastAPI.
+Backend реалізований на Python з використанням FastAPI. Після рефакторингу (ЛР5) файл `backend/main.py` є лише точкою входу, що збирає застосунок; уся логіка винесена в пакет `backend/fridgy/`. Команда запуску не змінилася: `uvicorn main:app`.
 
-Основний файл: `backend/main.py`.
+### Структура
 
-Основні компоненти:
-- FastAPI — HTTP API та маршрутизація.
-- Pydantic — моделі даних і валідація.
-- Google GenAI SDK — взаємодія з Gemini.
-- Asyncio — асинхронне виконання запитів та контроль часу очікування.
-- Python-dotenv — завантаження конфігурації з `.env`.
+```
+backend/
+├── main.py                       # точка входу: app, lifespan, підключення роутера, обробників помилок і middleware
+├── fridgy/
+│   ├── api/
+│   │   ├── routes.py             # GET /health, POST /recipe (тонкий роутер)
+│   │   ├── schemas.py            # Pydantic RecipeRequest / RecipeResponse + перетворення на доменні моделі
+│   │   ├── dependencies.py       # composition root (Depends): settings, provider, service
+│   │   ├── error_handlers.py     # помилки домену -> HTTP-відповіді
+│   │   └── middleware.py         # X-Request-ID
+│   ├── services/
+│   │   └── recipe_service.py     # сценарій: виклик провайдера, таймаут, бізнес-правила
+│   ├── domain/
+│   │   ├── models.py             # RecipeQuery, Recipe
+│   │   ├── errors.py             # категорії помилок
+│   │   └── interfaces.py         # RecipeProvider (Protocol)
+│   ├── infrastructure/providers/
+│   │   ├── gemini_provider.py    # справжній Gemini (єдине місце з AI SDK)
+│   │   └── mock_provider.py      # підробка для тестів і демонстрації
+│   └── core/
+│       ├── config.py             # Settings, load_settings (.env)
+│       └── request_context.py    # request_id, фільтр журналу, налаштування логування
+└── tests/                        # автоматизовані тести без мережі та API-ключа
+```
+
+### Відповідальність шарів
+
+| Шар | Відповідає за | Не знає про |
+|---|---|---|
+| api (routes, schemas) | Приймання запиту, схеми JSON, виклик сервісу, повернення відповіді | Gemini, бізнес-правила |
+| api/error_handlers | Перетворення помилок домену на HTTP-коди й повідомлення | Деталі SDK |
+| api/dependencies | Єдине місце створення залежностей (composition root) | Бізнес-логіку |
+| services | Сценарій «отримати три валідні рецепти»: таймаут і бізнес-правила | HTTP, FastAPI, Gemini SDK |
+| domain | Моделі, категорії помилок, інтерфейс RecipeProvider | Усе зовнішнє |
+| infrastructure/providers | Реалізації RecipeProvider: GeminiProvider і MockProvider | HTTP-коди |
+| core | Конфігурація (.env) і контекст запиту | Прикладну логіку |
+
+### Інтерфейс і дві реалізації
+
+`RecipeProvider` (typing.Protocol) має один метод `generate(query) -> list[Recipe]`. Реалізації:
+- **GeminiProvider** будує prompt, викликає Google GenAI SDK, розбирає відповідь і перетворює технічні помилки SDK на категорії домену. Типи SDK не виходять за межі цього файлу.
+- **MockProvider** повертає три тестові рецепти без мережі або кидає помилку, передану в конструктор. Рецепти мають `source = "mock"`.
+
+Вибір реалізації відбувається лише в `api/dependencies.py` за змінною `AI_PROVIDER` (`gemini` або `mock`) у `backend/.env`. У тестах реалізацію підміняє `app.dependency_overrides`.
+
+### Помилки
+
+| Помилка домену | HTTP |
+|---|---|
+| ProviderNotConfiguredError | 503 |
+| ProviderUnavailableError | 503 |
+| ProviderQuotaExceededError | 429 |
+| ProviderTimeoutError | 504 |
+| InvalidProviderResponseError | 502 |
+| ProviderError (інші) | 502 |
+
+Технічні подробиці записуються в журнал сервера; користувач отримує зрозуміле повідомлення без stack trace. Некоректні вхідні дані, як і раніше, повертають HTTP 422.
 
 ### API Endpoints
 
@@ -104,6 +156,8 @@ Backend реалізований на Python з використанням FastA
 |---|---|---|
 | GET | /health | Перевірка доступності сервера |
 | POST | /recipe | Генерація трьох рецептів |
+
+Кожна відповідь має заголовок `X-Request-ID` (див. API Contract).
 
 ## 5. AI Component
 
@@ -126,21 +180,25 @@ Backend перевіряє структуру відповіді, обов'яз�
 
 API Key зберігається на сервері у файлі `.env` і не передається мобільному застосунку.
 
+AI-компонент реалізовано як `GeminiProvider` за інтерфейсом `RecipeProvider`. Бізнес-правила перевірки результату (рівно три рецепти, унікальні назви, від 3 до 10 кроків, час не більший за ліміт) виконує `RecipeService`, а не провайдер.
+
 ## 6. Потік даних (Data Flow)
 
 1. Користувач вводить продукти та максимальний час приготування.
 2. FridgyStartScreen передає введені дані до RecipeViewModel.
 3. ViewModel виконує базову перевірку введення й змінює стан інтерфейсу на Loading.
 4. Мережевий шар формує HTTP POST-запит до Backend.
-5. FastAPI приймає запит і перевіряє вхідні дані через Pydantic.
-6. Backend передає параметри до AI-компонента.
-7. Google Gemini генерує три варіанти рецептів.
-8. Backend перевіряє отримані дані та формує JSON-відповідь.
-9. Android отримує відповідь і перетворює її на Kotlin-моделі.
-10. ViewModel перевіряє, що отримано рівно три рецепти. Після цієї перевірки результат вважається валідним.
-11. **Єдина точка збереження:** RecipeViewModel викликає HistoryRepository.saveSuccessful(...), який додає новий запис у Room.
-12. ViewModel оновлює стан на Success.
-13. Jetpack Compose відображає три рецепти користувачеві.
+5. FastAPI приймає запит; Pydantic (RecipeRequest) перевіряє й нормалізує дані; схема перетворюється на доменний RecipeQuery.
+6. Роутер викликає RecipeService, створений через Depends.
+7. RecipeService викликає RecipeProvider (GeminiProvider або MockProvider) із таймаутом.
+8. GeminiProvider надсилає запит до Google Gemini і перетворює відповідь на доменні Recipe.
+9. RecipeService перевіряє бізнес-правила (рівно три рецепти, унікальні назви, 3–10 кроків, час не більший за ліміт).
+10. Роутер перетворює Recipe на RecipeResponse і повертає JSON; помилки домену перетворює error_handlers. Кожна відповідь має заголовок X-Request-ID.
+11. Android отримує відповідь і перетворює її на Kotlin-моделі.
+12. ViewModel перевіряє, що отримано рівно три рецепти. Після цієї перевірки результат вважається валідним.
+13. **Єдина точка збереження:** RecipeViewModel викликає HistoryRepository.saveSuccessful(...), який додає новий запис у Room.
+14. ViewModel оновлює стан на Success.
+15. Jetpack Compose відображає три рецепти користувачеві.
 
 Гілки помилок (HTTP-помилка, відсутність мережі, некоректна відповідь) у базу нічого не записують.
 
@@ -222,6 +280,9 @@ Backend запускається окремо від Android-застосунк�
 - Автоматичне відновлення квоти Gemini не реалізовано.
 - Історія зберігається лише на пристрої; синхронізації між пристроями немає.
 - Запити без мережі не зберігаються для подальшої відправки (підвищений рівень ЛР4 не реалізований).
+- Класифікація помилок Gemini у GeminiProvider ґрунтується на пошуку підрядків у тексті помилки SDK (наприклад, «503», «UNAVAILABLE», «429», «RESOURCE_EXHAUSTED»). Вона ізольована в одному місці, але залишається крихкою.
+- Провайдер вибирається вручну через `AI_PROVIDER`; резервного провайдера на випадок збою Gemini немає.
+- Залежності створюються вручну (без DI-фреймворку); провайдер зберігається в одній змінній процесу.
 
 ## 11. Статус реалізації
 
@@ -234,3 +295,52 @@ Backend запускається окремо від Android-застосунк�
 - Обробку помилки HTTP 429.
 - Збереження успішних результатів у Room, перегляд історії та деталей, видалення записів, збереження даних після перезапуску.
 - Відсутність запису в історії після помилки Backend.
+- Backend після рефакторингу (ЛР5): 65 автоматизованих тестів без мережі проходять; Swagger із MockProvider повертає три рецепти з `source = "mock"`; наскрізний сценарій з Android працює з GeminiProvider; технічна помилка конфігурації перетворюється на контрольовану відповідь.
+
+## 12. Архітектура backend до і після рефакторингу (ЛР5)
+
+**Варіант:** Б (FastAPI backend). **Сценарій:** генерація трьох рецептів (`POST /recipe`).
+
+### До
+
+Увесь сценарій виконувався в одному файлі `backend/main.py` (версія до коміту `7618f49`; переглянути можна командою `git show 4a59838:backend/main.py`).
+
+```mermaid
+flowchart LR
+    A[Android] --> B["main.py: роутер + prompt + виклик Gemini SDK + перевірка результату + мапінг помилок + конфігурація"]
+    B --> C[(Gemini API)]
+```
+
+### Після
+
+```mermaid
+flowchart TB
+    A[Android] --> R["api/routes.py (тонкий роутер)"]
+    R --> S["services/recipe_service.py"]
+    S --> I{{"domain/interfaces.py: RecipeProvider"}}
+    I --> G["GeminiProvider"]
+    I --> M["MockProvider"]
+    G --> API[(Gemini API)]
+    R -.-> E["api/error_handlers.py"]
+    D["api/dependencies.py (composition root)"] -.-> R
+    D -.-> I
+    CFG["core/config.py (.env)"] -.-> D
+```
+
+### Проблеми початкової реалізації (докази в коді)
+
+| № | Проблема | Де було (main.py до рефакторингу) | Підтверджено | Що зроблено |
+|---|---|---|---|---|
+| 1 | Конкретний AI SDK використовувався напряму, без інтерфейсу; клієнт створювався глобально | `gemini_client = genai.Client(...)` на рівні модуля; виклик `gemini_client.aio.models.generate_content(...)` у `generate_recipe_with_gemini` | Так | SDK перенесено в `GeminiProvider` за інтерфейсом `RecipeProvider` |
+| 2 | Одна функція одночасно будувала prompt, викликала SDK, розбирала відповідь і перевіряла бізнес-правила (три різні рецепти, 3–10 кроків, час ≤ ліміту) | `generate_recipe_with_gemini` | Так | Prompt і розбір відповіді в `GeminiProvider`, правила в `RecipeService` |
+| 3 | Endpoint сам вирішував, яку помилку повернути, шукаючи підрядки в тексті винятку | `if "503" in error_text or "UNAVAILABLE" in error_text:` у `get_recipe` | Так | Категорії помилок у `domain/errors.py`, перетворення на HTTP в `api/error_handlers.py` |
+| 4 | Прикладну логіку неможливо перевірити без реального Gemini | Залежність від глобального `gemini_client` | Так | Залежності передаються ззовні; тести з `MockProvider` і fake-клієнтом |
+| 5 | Налаштування (ключ, модель, таймаут) розміщені глобальними змінними разом із кодом застосунку | `GEMINI_API_KEY`, `GEMINI_MODEL`, `AI_TIMEOUT_S` на початку `main.py` | Частково (розкиданість по різних файлах не підтверджена) | `core/config.py` |
+| 6 | Прикладна логіка залежить від `HTTPException` | `HTTPException` був лише в endpoint, логіка кидала `ValueError`/`RuntimeError` | Не підтверджено | Без змін |
+
+### Результат
+
+- `main.py` скоротився до 43 рядків: лише збирання застосунку.
+- Зовнішня залежність (Gemini) винесена за інтерфейс `RecipeProvider` з двома реалізаціями.
+- Залежності передаються через `Depends`; реалізація змінюється лише в composition root.
+- Контракт API (`GET /health`, `POST /recipe`, формат JSON) і команда запуску не змінилися; Android-код не змінювався.

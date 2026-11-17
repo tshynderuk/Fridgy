@@ -1,4 +1,3 @@
-
 # Fridgy — Project Overview
 
 ## 1. Project Description
@@ -7,9 +6,9 @@ Fridgy is an AI-powered Android application designed
 to help users decide what to cook using ingredients
 they already have at home.
 
-The application generates recipes based on available
-ingredients and the maximum cooking time specified
-by the user.
+The application generates three recipe suggestions based on
+available ingredients and the maximum cooking time specified
+by the user, and keeps a local history of successful results.
 
 The main goal is to simplify everyday meal planning
 and reduce food waste.
@@ -30,10 +29,11 @@ Fridgy is designed for users who:
 4. Presses the recipe generation button.
 5. Android sends a request to the backend.
 6. Backend validates the request.
-7. Google Gemini generates a recipe.
+7. The AI provider (Google Gemini) generates three recipes.
 8. Backend validates the AI response.
-9. Android receives the recipe.
-10. The application displays the result.
+9. Android receives the recipes.
+10. The application displays three recipe cards.
+11. The validated result is saved to the local history.
 
 ## 4. Technology Stack
 
@@ -47,6 +47,7 @@ Fridgy is designed for users who:
 - Asynchronous operations: Kotlin Coroutines.
 - HTTP client: Retrofit.
 - JSON converter: Gson.
+- Local database: Room.
 
 ### Backend
 
@@ -54,11 +55,13 @@ Fridgy is designed for users who:
 - Framework: FastAPI.
 - Request validation: Pydantic.
 - Server: Uvicorn.
+- Layers: api, services, domain, infrastructure, core (package `backend/fridgy`).
+- Tests: pytest, httpx.
 
 ### AI Integration
 
-- AI provider: Google Gemini.
-- Integration: Google GenAI Python SDK.
+- AI provider: Google Gemini (GeminiProvider) or a fake provider (MockProvider).
+- Integration: Google GenAI Python SDK, used only in GeminiProvider.
 - API key is stored in backend environment configuration.
 
 ## 5. Current Application Features
@@ -68,14 +71,13 @@ The implemented MVP supports:
 - Manual ingredient input.
 - Maximum cooking time selection.
 - Input validation.
-- AI recipe generation.
+- AI generation of three recipes.
 - Structured recipe responses.
-- Recipe name display.
-- Cooking time display.
-- Ingredient list display.
-- Step-by-step cooking instructions.
+- Recipe name, cooking time, ingredient list and step-by-step instructions.
 - Loading, success and error UI states.
 - Backend connectivity check.
+- Local history of successful results, details screen and deletion (Lab 4).
+- Layered backend with an AI provider interface and tests (Lab 5).
 
 ## 6. Input Restrictions
 
@@ -95,14 +97,14 @@ with the backend through Retrofit.
 Available endpoints:
 
 - GET /health — checks backend availability.
-- POST /recipe — generates one recipe.
+- POST /recipe — generates three recipes.
 
 The recipe request contains:
 
 - ingredients: List<String>
 - max_time_minutes: Int
 
-The recipe response contains:
+The response is a list of three recipes. Each recipe contains:
 
 - recipe_name
 - cooking_time_minutes
@@ -110,34 +112,27 @@ The recipe response contains:
 - instructions
 - source
 
-## 8. Current MVP Limitations
+Every response has the X-Request-ID header.
 
-The current implementation generates
-one recipe per request.
+## 8. Current MVP Limitations
 
 The application does not yet have confirmed
 implementations of:
 
-- Multiple recipe suggestions.
-- Recipe history.
 - Favorite recipes.
 - Camera-based ingredient recognition.
 - User authentication.
 - Nutritional analysis.
+- Offline requests with "pending" status.
 
 ## 9. Planned Development
 
-The next planned feature is Multiple Recipe Suggestions.
+Possible next steps:
 
-The goal is to allow users to receive
-three different recipe options based on
-the same ingredient list.
-
-Each recipe must respect the maximum
-cooking time specified by the user.
-
-The new feature must preserve the existing
-Fridgy architecture and functionality.
+- A fallback provider when Gemini fails.
+- Favorite recipes.
+- Dietary preferences.
+- Automated tests for the Android application.
 
 ## 10. Development Principle
 

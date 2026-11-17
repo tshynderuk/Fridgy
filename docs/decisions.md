@@ -63,6 +63,7 @@ Selected technologies:
 - Pydantic
 - Uvicorn
 - asyncio
+- pytest and httpx (automated tests, Lab 5)
 
 Constraint:
 Do not move Gemini API calls into the Android application.
@@ -80,6 +81,9 @@ AI integration is implemented on the backend.
 
 Constraint:
 The Gemini API key must remain on the server.
+
+Since Lab 5 the Gemini SDK is used only inside
+GeminiProvider (fridgy/infrastructure/providers/gemini_provider.py).
 
 Note:
 An experiment with calling Gemini directly from the
@@ -293,3 +297,115 @@ documented in known-limitations.md.
 - Incomplete or invalid AI responses.
 - Requests that did not produce a result.
 - Derived values (formatted dates, labels).
+
+## 19. Lab 5 Scope: Variant B, One Scenario (2026-11-17)
+
+Decision:
+Refactor the FastAPI backend (variant B) for one scenario:
+generation of three recipes (POST /recipe).
+
+Reason:
+The backend is a single file (main.py) that mixed routing,
+prompt building, the Gemini SDK call, validation and error mapping.
+Backend tests also need no emulator.
+
+Constraint:
+The Android application, the API contract and the run command
+(uvicorn main:app) must not change.
+
+## 20. Provider Interface and Two Implementations (Lab 5)
+
+Decision:
+Hide the external AI behind RecipeProvider (typing.Protocol) with one method:
+generate(query) -> list[Recipe].
+Two implementations: GeminiProvider (real) and MockProvider (fake,
+success and error modes).
+
+Reason:
+The Gemini call is the external dependency that makes the application
+logic impossible to test without network and an API key.
+Protocol was chosen because implementations do not need a common base class.
+
+Constraint:
+AI SDK types must not leave the infrastructure layer
+(gemini_provider.py). The provider returns domain Recipe objects
+or domain errors.
+
+## 21. Service Owns Business Rules (Lab 5)
+
+Decision:
+RecipeService calls the provider with a timeout and validates the result:
+exactly three recipes, non-empty unique names (case-insensitive),
+ingredients present, 3-10 steps, cooking time from 1 minute to the user's limit.
+
+Reason:
+These rules belong to the application, not to a particular AI provider,
+so they must hold for every provider.
+
+## 22. Domain Errors and Central HTTP Mapping (Lab 5)
+
+Decision:
+Errors are categories in fridgy/domain/errors.py. The mapping to HTTP codes
+and user messages is done in one place: api/error_handlers.py.
+
+Mapping:
+NotConfigured 503, Unavailable 503, QuotaExceeded 429, Timeout 504,
+InvalidResponse 502, other provider errors 502.
+
+Constraint:
+The user never receives a stack trace or the technical error text.
+User-facing messages are kept identical to the pre-refactoring ones.
+
+Known compromise:
+GeminiProvider still classifies SDK errors by searching substrings
+in the error text. The fragile code is isolated in one function.
+
+## 23. Manual Dependency Injection with FastAPI Depends (Lab 5)
+
+Decision:
+Create dependencies in one composition root (api/dependencies.py) using
+FastAPI Depends. Replace implementations in tests with
+app.dependency_overrides. No DI framework is used.
+
+Reason:
+There are only three dependencies (settings, provider, service);
+a DI framework would add complexity without benefit.
+
+## 24. Centralized Configuration (Lab 5)
+
+Decision:
+All settings (AI_PROVIDER, GEMINI_API_KEY, GEMINI_MODEL, AI_TIMEOUT_S)
+are read in fridgy/core/config.py from backend/.env.
+AI_PROVIDER selects the implementation: gemini (default) or mock.
+
+Constraint:
+Secrets stay in backend/.env and are never logged or committed.
+Changing .env requires restarting the server.
+
+## 25. Entry Point and Contract Compatibility (Lab 5)
+
+Decision:
+backend/main.py remains the entry point and exposes the app object.
+The JSON contract is unchanged. Two additions do not break clients:
+the response header X-Request-ID, and source = "mock" when the mock
+provider is selected.
+
+## 26. Control Extension: request_id (Lab 5)
+
+Decision:
+Every response carries the X-Request-ID header and every log line
+contains the request id. A safe incoming X-Request-ID
+(letters, digits, dot, underscore, hyphen, up to 64 characters) is reused,
+otherwise a new identifier is generated.
+
+Reason:
+The request id is kept in a contextvar, so it reaches the service and the
+provider without changing their code. This shows that the new boundaries work.
+
+## 27. Tests Without External Dependencies (Lab 5)
+
+Decision:
+Tests use MockProvider, a fake Gemini client and dependency_overrides.
+They do not call the network and do not use real API keys.
+The baseline tests written before the refactoring (commit 4a59838)
+were replaced by tests of the new structure that check the same HTTP codes.

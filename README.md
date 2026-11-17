@@ -248,3 +248,41 @@ Swagger API:
 4. Зупинити Backend, спробувати згенерувати рецепти: з'явиться помилка, нових записів в історії немає.
 
 Backend і AI-компонент у цій лабораторній роботі не змінювалися. Технічні рішення описано в `docs/decisions.md`, зміни в `docs/changelog.md`.
+
+### 10. Лабораторна робота 5: архітектура backend (варіант Б)
+
+**Варіант:** Б — FastAPI backend. **Сценарій:** генерація трьох рецептів (`POST /recipe`).
+
+`backend/main.py` — лише точка входу. Уся логіка винесена в пакет `backend/fridgy/`:
+
+- `api/` — тонкий роутер, Pydantic-схеми, composition root (`Depends`), обробники помилок, middleware з `X-Request-ID`;
+- `services/` — `RecipeService` (бізнес-правила й таймаут);
+- `domain/` — моделі, категорії помилок, інтерфейс `RecipeProvider`;
+- `infrastructure/providers/` — `GeminiProvider` (справжній AI) і `MockProvider` (підробка);
+- `core/` — конфігурація та контекст запиту.
+
+Контракт API й команда запуску не змінилися. Android-код не змінювався.
+
+**Вибір реалізації AI.** У `backend/.env` змінна `AI_PROVIDER`:
+
+```env
+AI_PROVIDER=gemini
+```
+
+- `gemini` — справжній Google Gemini (за замовчуванням);
+- `mock` — підробка без мережі та ключа: три тестові рецепти з `"source": "mock"`.
+
+Після зміни `.env` сервер потрібно перезапустити.
+
+**Запуск тестів** (папка `backend`):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Тестам не потрібні мережа, backend чи API-ключ.
+
+**Контрольне розширення:** кожна відповідь має заголовок `X-Request-ID`, а номер запиту записується в кожен рядок журналу сервера.
+
+Опис архітектури «до і після» — у `docs/architecture.md`, рішення — у `docs/decisions.md`, обмеження — у `docs/known-limitations.md`.
