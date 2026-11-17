@@ -10,9 +10,11 @@ from fastapi import FastAPI
 
 from fridgy.api.dependencies import close_provider, get_settings
 from fridgy.api.error_handlers import register_error_handlers
+from fridgy.api.middleware import register_request_id_middleware
 from fridgy.api.routes import router
+from fridgy.core.request_context import configure_logging
 
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger("fridgy")
 
 
@@ -32,9 +34,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Fridgy API",
     description="AI-підбір рецептів за продуктами користувача",
-    version="2.2.0",
+    version="2.3.0",
     lifespan=lifespan,
 )
 
 register_error_handlers(app)
+register_request_id_middleware(app)
 app.include_router(router)
